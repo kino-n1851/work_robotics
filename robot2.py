@@ -3,6 +3,8 @@ import random
 import math
 from enum import Enum
 import numpy as np
+from matplotlib.patches import Ellipse
+
 TIMESCALE = 0.1
 TIME_BREAK = 70
 NUM_ROBOT = 100
@@ -18,13 +20,23 @@ class Pos:
         self.y = y
 
 
-class Vector:
-    x: float
-    y: float
+class Vector2d:
+    value: np.ndarray
 
-    def __init__(self, x: float, y: float):
-        self.x = x
-        self.y = y
+    def __init__(self, value: np.ndarray):
+        self.value = value
+
+    def calc_eValue(self):
+        v1 = np.array([0.5, 0.5])
+        for _i in range(10):
+            v1 = np.dot(self.value, v1)
+            v1 = v1/np.linalg.norm(v1, ord=2)
+
+        ev1 = np.linalg.norm(np.dot(self.value, v1), ord=2)
+        v2 = np.dot(np.array([[math.cos(math.pi/2), -1*math.sin(math.pi/2)],
+                              [math.sin(math.pi/2), math.cos(math.pi/2)]]), v1)
+        ev2 = np.linalg.norm(np.dot(self.value, v2), ord=2)
+        return [ev1, ev2], v1
 
 
 class Param:
@@ -47,12 +59,10 @@ class Param:
 class PositionListAtTime:
     time: int
     pos: np.ndarray
-    v_cv_matrix: np.ndarray
     avg: Pos
-    eigen_value: float
-    eigen_vector: Vector
-    v_cv_matrix: np.ndarray
-    avg: Pos
+    eVector: Pos
+    eValue: list
+    v_cv_matrix: Vector2d
 
     def __init__(self, time: int, pos: np.ndarray):
         self.time = time
@@ -61,13 +71,15 @@ class PositionListAtTime:
 
     def calc_matrix(self):
         self.avg = Pos(np.average(self.pos[:, 0]), np.average(self.pos[:, 1]))
+        print(self.pos.shape[1])
         _Sxx = 1/self.pos.shape[0] * np.dot((self.pos[:, 0] - self.avg.x), (self.pos[:, 0] - self.avg.x).T)
-        _Syy = 1/self.pos.shape[1] * np.dot((self.pos[:, 1] - self.avg.y), (self.pos[:, 1] - self.avg.y).T)
+        _Syy = 1/self.pos.shape[0] * np.dot((self.pos[:, 1] - self.avg.y), (self.pos[:, 1] - self.avg.y).T)
         _Sxy = _Syx = 1/self.pos.shape[0] * np.dot((self.pos[:, 0] - self.avg.x), (self.pos[:, 1] - self.avg.y).T)
-        self.v_cv_matrix = np.array([[_Sxx, _Sxy], [_Syx, _Syy]])
-
-    def calc_eigen(self):
-        
+        self.v_cv_matrix = Vector2d([[_Sxx, _Sxy], [_Syx, _Syy]])
+        print([[_Sxx, _Sxy], [_Syx, _Syy]])
+        self.eValue, vector = self.v_cv_matrix.calc_eValue()
+        self.eVector = Pos(*vector)
+        #print(self.time, self.avg.x, self.avg.y, self.eVector.x, self.eVector.y, self.eValue, self.v_cv_matrix.value)
 
 
 class Command:
@@ -202,21 +214,31 @@ def run(param: Param, setting_vel: float, setting_omg: float, time_break: int):
 
 
 def main() -> None:
+    param = Param(0, 0, 0, 0, 0, 0)
+    circle = run(param, setting_vel=1.0, setting_omg=1.0, time_break=TIME_BREAK)
+
     param = Param(0.01, 0.001, 0.001, 0.01, 0.001, 0.001)
     result = np.array([run(param, setting_vel=1.0, setting_omg=1.0, time_break=TIME_BREAK) for i in range(NUM_ROBOT)])
 
+    fig = plt.figure(figsize=(6.0, 6.0))
+    ax = fig.add_subplot(111)
+    print(result.shape)
     # print(np.split(result,NUM_ROBOT,0)[0])
     group_list = []
     for i in range(0, TIME_BREAK, LOG_INTERVAL):
         group = PositionListAtTime(i, result)
         group_list.append(group.pos)
+        #print(group.eVector.x, group.eVector.y)
+        ell = Ellipse((group.avg.x, group.avg.y), math.sqrt(9.21*group.eValue[0]), math.sqrt(9.21*group.eValue[1]),
+                      angle=math.atan2(group.eVector.y, group.eVector.x)*180/math.pi, alpha=0.5)
+        ax.add_artist(ell)
 
     group_list = np.array(group_list)
 
-    fig = plt.figure(figsize=(6.0, 6.0))
-    ax = fig.add_subplot(111)
     ax.scatter(group_list[:, :, 0], group_list[:, :, 1], s=2)
+    ax.plot(circle[0], circle[1], color="b")
     # fig.show()
+
     fig.savefig("test.png")
 
 
