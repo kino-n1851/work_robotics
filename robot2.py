@@ -20,6 +20,7 @@ class Pos:
         self.y = y
 
 
+# 固有値を計算するメソッドを持った2x2行列クラス
 class Vector2d:
     value: np.ndarray
 
@@ -30,7 +31,10 @@ class Vector2d:
         v1 = np.array([0.5, 0.5])
         for _i in range(10):
             v1 = np.dot(self.value, v1)
-            v1 = v1/np.linalg.norm(v1, ord=2)
+            if v1[0] == 0 and v1[1] == 0:
+                v1 = np.array([0, 0])
+            else:
+                v1 = v1/np.linalg.norm(v1, ord=2)
 
         ev1 = np.linalg.norm(np.dot(self.value, v1), ord=2)
         v2 = np.dot(np.array([[math.cos(math.pi/2), -1*math.sin(math.pi/2)],
@@ -67,19 +71,21 @@ class PositionListAtTime:
     def __init__(self, time: int, pos: np.ndarray):
         self.time = time
         self.pos = pos[:, :, time]
-        self.calc_matrix()
+        self.v_cv_matrix, self.eValue, self.eVector = self.calc_matrix()
 
+    # 分散共分散行列の算出
     def calc_matrix(self):
         self.avg = Pos(np.average(self.pos[:, 0]), np.average(self.pos[:, 1]))
-        print(self.pos.shape[1])
+
         _Sxx = 1/self.pos.shape[0] * np.dot((self.pos[:, 0] - self.avg.x), (self.pos[:, 0] - self.avg.x).T)
         _Syy = 1/self.pos.shape[0] * np.dot((self.pos[:, 1] - self.avg.y), (self.pos[:, 1] - self.avg.y).T)
         _Sxy = _Syx = 1/self.pos.shape[0] * np.dot((self.pos[:, 0] - self.avg.x), (self.pos[:, 1] - self.avg.y).T)
-        self.v_cv_matrix = Vector2d([[_Sxx, _Sxy], [_Syx, _Syy]])
-        print([[_Sxx, _Sxy], [_Syx, _Syy]])
-        self.eValue, vector = self.v_cv_matrix.calc_eValue()
-        self.eVector = Pos(*vector)
-        #print(self.time, self.avg.x, self.avg.y, self.eVector.x, self.eVector.y, self.eValue, self.v_cv_matrix.value)
+        v_cv_matrix = Vector2d([[_Sxx, _Sxy], [_Syx, _Syy]])
+
+        eValue, vector = v_cv_matrix.calc_eValue()
+        eVector = Pos(*vector)
+        # print(self.time, self.avg.x, self.avg.y, self.eVector.x, self.eVector.y, self.eValue, self.v_cv_matrix.value)
+        return v_cv_matrix, eValue, eVector
 
 
 class Command:
@@ -222,21 +228,26 @@ def main() -> None:
 
     fig = plt.figure(figsize=(6.0, 6.0))
     ax = fig.add_subplot(111)
-    print(result.shape)
+
     # print(np.split(result,NUM_ROBOT,0)[0])
     group_list = []
     for i in range(0, TIME_BREAK, LOG_INTERVAL):
         group = PositionListAtTime(i, result)
         group_list.append(group.pos)
-        #print(group.eVector.x, group.eVector.y)
+        # print(group.eVector.x, group.eVector.y)
         ell = Ellipse((group.avg.x, group.avg.y), math.sqrt(9.21*group.eValue[0]), math.sqrt(9.21*group.eValue[1]),
-                      angle=math.atan2(group.eVector.y, group.eVector.x)*180/math.pi, alpha=0.5)
+                      angle=math.atan2(group.eVector.y, group.eVector.x)*180/math.pi, alpha=0.5, color="r")
         ax.add_artist(ell)
 
     group_list = np.array(group_list)
 
-    ax.scatter(group_list[:, :, 0], group_list[:, :, 1], s=2)
-    ax.plot(circle[0], circle[1], color="b")
+    ax.scatter(group_list[:, :, 0], group_list[:, :, 1], s=2, color="b")
+    ax.plot(circle[0], circle[1], color="black")
+    plt.xlim(-1.5, 1.5)
+    plt.ylim(-0.5, 2.5)
+    plt.xlabel("X[m]")
+    plt.ylabel("Y[m]")
+    plt.grid()
     # fig.show()
 
     fig.savefig("test.png")
